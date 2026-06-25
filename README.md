@@ -4,7 +4,9 @@ An interactive star map of the Destiny saga — *The Guardian's Journey*. The pa
 the player through the story one chapter at a time, world by world. Top-center tabs switch
 between the star map and two overlays: a **Timeline** (every event in order, with its
 location — click a reached chapter to expand its detailed "more info" view, then optionally
-travel there) and **Dossiers** (profiles of the major figures).
+travel there or **continue to the next stop** without leaving the timeline) and **Dossiers**
+(profiles of the major figures). Selecting a world on the map and picking a chapter in its
+side panel offers a **View in Timeline** jump straight to that event's expanded entry.
 
 The whole experience is driven by **plain-text content files** that a lore expert can edit
 without touching any code. The page reads them at load time.

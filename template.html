@@ -486,6 +486,9 @@
                     </div>
                   </sc-for>
                 </div>
+                <sc-if value="{{ b.canViewTimeline }}" hint-placeholder-val="{{ false }}">
+                  <div onclick="{{ b.onViewTimeline }}" style="{{ b.viewTimelineStyle }}">VIEW IN TIMELINE ▸</div>
+                </sc-if>
               </div>
             </sc-if>
             <sc-if value="{{ b.locked }}" hint-placeholder-val="{{ false }}">
@@ -552,6 +555,10 @@
           </div>
         </sc-for>
       </div>
+      <!-- advance the journey to the next stop without leaving the timeline -->
+      <sc-if value="{{ timelineCanContinue }}" hint-placeholder-val="{{ false }}">
+        <button onclick="{{ onTimelineContinue }}" style="{{ timelineContinueStyle }}">CONTINUE ▸  {{ timelineNextTitle }}</button>
+      </sc-if>
     </div>
   </sc-if>
 
@@ -882,6 +889,18 @@ class Component extends DCLogic {
   // Toggle a timeline event's inline "more info" expansion (accordion: only one open at a time).
   toggleExpand(i){ this.setState({ expanded: this.state.expanded === i ? null : i }); }
 
+  // From the map's side panel: open the Timeline tab with this event expanded for the full details.
+  openInTimeline(i){ this.setState({ panel:'timeline', expanded:i, selIcon:null }); }
+
+  // Advance the journey to the next stop from within the Timeline (no map animation needed since the
+  // overlay covers it): bump progress, move the ship + selection to the new world, expand it, persist.
+  advanceInTimeline(){
+    const { progress } = this.state;
+    if (progress >= this.beats.length - 1) return;
+    const next = progress + 1, toW = this.beats[next].w, to = this.meta[toW];
+    this.setState({ progress: next, selWorld: toW, selIcon: null, expanded: next, shipVisible: true, ship: { x:to.x, y:to.y } }, this.persist);
+  }
+
   // Travel to an already-reached event from the timeline list: fly the ship to that
   // event's planet and open its side panel. Does NOT change progress (linear journey
   // is preserved); locked (not-yet-reached) events are ignored.
@@ -1039,6 +1058,10 @@ class Component extends DCLogic {
             shapeStyle: this.shapeStyleFor(ic.t, '1.5cqh'),
             onClick: ()=> this.setState({ selIcon: { ...ic } }),
           })),
+          // jump from the map's side panel into this event's expanded Timeline entry
+          canViewTimeline: reached,
+          viewTimelineStyle: { marginTop:'1.2cqh', display:'inline-block', fontFamily:"'Space Mono',monospace", fontSize:'1.2cqh', letterSpacing:'.14em', color:'#c89bff', cursor:'pointer', borderBottom:'1px solid rgba(200,155,255,.4)', paddingBottom:'.2cqh' },
+          onViewTimeline: ()=> this.openInTimeline(i),
         };
       });
     }
@@ -1116,6 +1139,8 @@ class Component extends DCLogic {
     const hasDossiers = dossiers.length > 0;
     const mkTab = (active) => ({ cursor:'pointer', fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'1.5cqh', letterSpacing:'.18em', padding:'1cqh 2.4cqh', border:'1px solid '+(active ? 'transparent' : 'rgba(200,155,255,.3)'), color: active ? '#0a0e14' : '#cdd8e4', background: active ? 'linear-gradient(90deg,#d9c2ff,#c89bff)' : 'rgba(13,22,32,.72)', boxShadow: active ? '0 0 1.6cqh rgba(200,155,255,.4)' : 'none' });
 
+    // "next stop" control inside the timeline — advance the journey without returning to the map
+    const timelineCanContinue = started && progress < total - 1;
     return {
       dossiers, hasDossiers, timeline,
       showTimeline: panel === 'timeline', showDossiers: panel === 'dossiers',
@@ -1123,6 +1148,10 @@ class Component extends DCLogic {
       onToggleTimeline: ()=> this.setState({ panel: this.state.panel === 'timeline' ? null : 'timeline', selIcon:null }),
       onToggleDossiers: ()=> this.setState({ panel: this.state.panel === 'dossiers' ? null : 'dossiers', selIcon:null }),
       onClosePanel: ()=> this.setState({ panel:null }),
+      timelineCanContinue,
+      timelineNextTitle: timelineCanContinue ? this.beats[progress + 1].title.toUpperCase() : '',
+      onTimelineContinue: ()=> this.advanceInTimeline(),
+      timelineContinueStyle: { flex:'none', marginTop:'1.6cqh', alignSelf:'center', fontFamily:"'Oxanium',sans-serif", fontWeight:700, fontSize:'1.55cqh', letterSpacing:'.16em', color:'#0a0e14', background:'linear-gradient(90deg,#d9c2ff,#c89bff)', border:'none', padding:'1.1cqh 3cqh', cursor:'pointer', boxShadow:'0 0 1.8cqh rgba(200,155,255,.4)' },
       worlds, bodyLabels,
       eraTag: started ? cur.era : 'STANDBY',
       chapterNum: started ? (progress + 1) : 0,

@@ -479,6 +479,9 @@
                     </div>
                   </sc-for>
                 </div>
+                <sc-if value="{{ b.canViewTimeline }}" hint-placeholder-val="{{ false }}">
+                  <div onclick="{{ b.onViewTimeline }}" style="{{ b.viewTimelineStyle }}">VIEW IN TIMELINE ▸</div>
+                </sc-if>
               </div>
             </sc-if>
             <sc-if value="{{ b.locked }}" hint-placeholder-val="{{ false }}">
@@ -545,6 +548,10 @@
           </div>
         </sc-for>
       </div>
+      <!-- advance the journey to the next stop without leaving the timeline -->
+      <sc-if value="{{ timelineCanContinue }}" hint-placeholder-val="{{ false }}">
+        <button onclick="{{ onTimelineContinue }}" style="{{ timelineContinueStyle }}">CONTINUE ▸  {{ timelineNextTitle }}</button>
+      </sc-if>
     </div>
   </sc-if>
 
