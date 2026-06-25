@@ -512,20 +512,35 @@
   <sc-if value="{{ showTimeline }}" hint-placeholder-val="{{ false }}">
     <div style="position:absolute; inset:0; z-index:60; background:radial-gradient(circle at 50% 40%, rgba(8,12,18,.95), rgba(4,6,10,.98)); display:flex; flex-direction:column; align-items:center; padding:11cqh 0 3cqh;">
       <div onclick="{{ onClosePanel }}" style="position:absolute; right:4cqh; top:5cqh; width:3.4cqh; height:3.4cqh; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#8a9bad; font-size:2.4cqh; border:1px solid rgba(140,165,195,.25); z-index:2;">✕</div>
-      <div style="font-family:'Barlow',sans-serif; font-size:1.5cqh; color:#7f93a8; margin-bottom:2cqh; text-align:center;">The full journey, in order. Click any reached chapter to travel there.</div>
+      <div style="font-family:'Barlow',sans-serif; font-size:1.5cqh; color:#7f93a8; margin-bottom:2cqh; text-align:center;">The full journey, in order. Click any reached chapter to expand its details.</div>
       <div style="width:74cqh; max-width:92%; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:1.2cqh; padding:0 1cqh;">
         <sc-for list="{{ timeline }}" as="t" hint-placeholder-count="8">
-          <div onclick="{{ t.onClick }}" style="{{ t.rowStyle }}">
-            <div style="{{ t.numStyle }}">{{ t.num }}</div>
-            <div style="flex:1; min-width:0;">
-              <div style="{{ t.titleStyle }}">{{ t.title }}</div>
-              <div style="{{ t.metaStyle }}">{{ t.meta }}</div>
+          <div>
+            <div onclick="{{ t.onClick }}" style="{{ t.rowStyle }}">
+              <div style="{{ t.numStyle }}">{{ t.num }}</div>
+              <div style="flex:1; min-width:0;">
+                <div style="{{ t.titleStyle }}">{{ t.title }}</div>
+                <div style="{{ t.metaStyle }}">{{ t.meta }}</div>
+              </div>
+              <sc-if value="{{ t.isCurrent }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family:'Space Mono',monospace; font-size:1.05cqh; letter-spacing:.18em; color:#0a0e14; background:#c89bff; padding:.3cqh .8cqh; flex:none;">NOW</div>
+              </sc-if>
+              <sc-if value="{{ t.locked }}" hint-placeholder-val="{{ false }}">
+                <div style="font-family:'Space Mono',monospace; font-size:1.6cqh; color:#46525f; flex:none;">◇</div>
+              </sc-if>
+              <div style="{{ t.chevronStyle }}">{{ t.chevron }}</div>
             </div>
-            <sc-if value="{{ t.isCurrent }}" hint-placeholder-val="{{ false }}">
-              <div style="font-family:'Space Mono',monospace; font-size:1.05cqh; letter-spacing:.18em; color:#0a0e14; background:#c89bff; padding:.3cqh .8cqh; flex:none;">NOW</div>
-            </sc-if>
-            <sc-if value="{{ t.locked }}" hint-placeholder-val="{{ false }}">
-              <div style="font-family:'Space Mono',monospace; font-size:1.6cqh; color:#46525f; flex:none;">◇</div>
+            <!-- inline "more info" expansion (content authored in timeline.md's ### section) -->
+            <sc-if value="{{ t.isOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ t.detailWrapStyle }}">
+                <div style="{{ t.bodyStyle }}">{{ t.body }}</div>
+                <sc-if value="{{ t.hasDetail }}" hint-placeholder-val="{{ false }}">
+                  <sc-for list="{{ t.detail }}" as="d" hint-placeholder-count="3">
+                    <div style="{{ d.style }}">{{ d.text }}</div>
+                  </sc-for>
+                </sc-if>
+                <button onclick="{{ t.onTravel }}" style="{{ t.travelBtnStyle }}">TRAVEL HERE ▸</button>
+              </div>
             </sc-if>
           </div>
         </sc-for>

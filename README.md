@@ -3,8 +3,8 @@
 An interactive star map of the Destiny saga — *The Guardian's Journey*. The page walks
 the player through the story one chapter at a time, world by world. Top-center tabs switch
 between the star map and two overlays: a **Timeline** (every event in order, with its
-location — click a reached chapter to fly there) and **Dossiers** (profiles of the major
-figures).
+location — click a reached chapter to expand its detailed "more info" view, then optionally
+travel there) and **Dossiers** (profiles of the major figures).
 
 The whole experience is driven by **plain-text content files** that a lore expert can edit
 without touching any code. The page reads them at load time.
@@ -16,7 +16,7 @@ the page — your changes appear live (when the page is served over http; see be
 
 | File | What it controls |
 |------|------------------|
-| [`content/timeline.md`](content/timeline.md) | The ordered **sequence** of story events. Each `## ` block is one event with its location, era, prose, and categorically-labelled **Quest / Gear / Faction / Triumph** associations. The order of blocks *is* the order on the map and in the Timeline tab, and each event's `Location:` drives both where the ship flies and which side panel opens. |
+| [`content/timeline.md`](content/timeline.md) | The ordered **sequence** of story events. Each `## ` block is one event with its location, era, prose, and categorically-labelled **Quest / Gear / Faction / Triumph** associations. An optional `### ` section at the end of a block holds the **"more info"** detail shown only when that event is expanded in the Timeline tab. The order of blocks *is* the order on the map and in the Timeline tab, and each event's `Location:` drives both where the ship flies and which side panel opens. |
 | [`content/dossiers.md`](content/dossiers.md) | The **dossiers** on the biggest figures — role, affiliation, **when they became important**, status, and a prose profile. |
 | [`content/LOCATIONS.md`](content/LOCATIONS.md) | Reference list of the valid `Location:` ids used in `timeline.md` (read-only). |
 

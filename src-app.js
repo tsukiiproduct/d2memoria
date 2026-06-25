@@ -11,13 +11,21 @@ function parseTimeline(md){
   const tagMap = { quest:'quest', gear:'loot', faction:'faction', triumph:'triumph' };
   const DASH = ' — '; // spaced em dash separating Name from description
   const lines = md.split(/\r?\n/);
-  const beats = []; let cur = null, inComment = false;
+  const beats = []; let cur = null, inComment = false, detailMode = false;
   for (const raw of lines){
     const line = raw.trim();
     if (inComment){ if (line.includes(CMT_CLOSE)) inComment = false; continue; }
     if (line.startsWith(CMT_OPEN)){ if (!line.includes(CMT_CLOSE)) inComment = true; continue; }
-    if (line.startsWith('## ')){ cur = { w:'', era:'', title:line.slice(3).trim(), body:'', icons:[] }; beats.push(cur); continue; }
+    if (line.startsWith('## ')){ cur = { w:'', era:'', title:line.slice(3).trim(), body:'', icons:[], detail:[] }; beats.push(cur); detailMode = false; continue; }
     if (!cur) continue;
+    // A "### " sub-heading begins the expandable "more info" section. Everything after it
+    // (until the next event) is detail content, shown ONLY in the timeline's expanded view.
+    if (line.startsWith('### ')){ detailMode = true; cur.detail.push({ kind:'h', text:line.slice(4).trim() }); continue; }
+    if (detailMode){
+      if (line === '' || line.startsWith('#')) continue;
+      if (line.startsWith('- ')){ cur.detail.push({ kind:'li', text:line.slice(2).trim() }); continue; }
+      cur.detail.push({ kind:'p', text:line }); continue;
+    }
     if (line.startsWith('- ')){
       const rest = line.slice(2), ci = rest.indexOf(':');
       if (ci < 0) continue;
@@ -235,7 +243,8 @@ class Component extends DCLogic {
   dossiers = [];
 
   // panel: null = star map, 'timeline' = timeline list, 'dossiers' = dossiers archive (mutually exclusive top-tab views)
-  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, panel: null, ship: { x:64, y:85 } };
+  // expanded: index of the timeline event whose "more info" section is open inline (null = none)
+  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, panel: null, expanded: null, ship: { x:64, y:85 } };
 
   componentDidMount() { this.loadContent(); }
 
@@ -275,7 +284,10 @@ class Component extends DCLogic {
 
   begin(){ const w=this.beats[0].w; this.setState({ started:true, selWorld:w, shipVisible:true, ship:{x:this.meta[w].x,y:this.meta[w].y} }, this.persist); }
 
-  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false, panel:null }); }
+  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false, panel:null, expanded:null }); }
+
+  // Toggle a timeline event's inline "more info" expansion (accordion: only one open at a time).
+  toggleExpand(i){ this.setState({ expanded: this.state.expanded === i ? null : i }); }
 
   // Travel to an already-reached event from the timeline list: fly the ship to that
   // event's planet and open its side panel. Does NOT change progress (linear journey
@@ -471,21 +483,38 @@ class Component extends DCLogic {
       cardStyle: { padding:'2.4cqh 2.8cqh', background:'rgba(255,255,255,.02)', border:'1px solid rgba(140,165,195,.16)', borderLeft:'2px solid #c89bff' },
     }));
 
-    // ordered timeline: every progressable event (from content/timeline.md), in order, with its location
+    // ordered timeline: every progressable event (from content/timeline.md), in order, with its location.
+    // Clicking a reached event expands it inline to a "more info" view (body + the ### detail section).
+    const expanded = this.state.expanded;
     const timeline = this.beats.map((b, i) => {
       const reached = i <= progress, isCurrent = i === progress, locked = i > progress;
+      const isOpen = reached && expanded === i;
       const m = this.meta[b.w] || {};
       const accent = isCurrent ? '#c89bff' : (reached ? '#7f93a8' : '#46525f');
+      const detail = (b.detail || []).map(d => {
+        if (d.kind === 'h') return { text: d.text, style: { fontFamily:"'Space Mono',monospace", fontSize:'1.2cqh', letterSpacing:'.2em', textTransform:'uppercase', color:'#c89bff', marginTop:'1.4cqh', marginBottom:'.4cqh' } };
+        if (d.kind === 'li') return { text: '•   ' + d.text, style: { fontFamily:"'Barlow',sans-serif", fontSize:'1.6cqh', color:'#aebccd', lineHeight:'1.5', paddingLeft:'1cqh', marginTop:'.5cqh' } };
+        return { text: d.text, style: { fontFamily:"'Barlow',sans-serif", fontSize:'1.6cqh', color:'#aebccd', lineHeight:'1.55', marginTop:'.8cqh' } };
+      });
       return {
         num: String(i + 1).padStart(2, '0'),
         title: reached ? b.title : '????????',
         meta: b.era + ' · ' + (m.name || b.w),
-        isCurrent, locked,
-        rowStyle: { display:'flex', alignItems:'center', gap:'1.6cqh', padding:'1.4cqh 1.8cqh', cursor: reached ? 'pointer' : 'default', background: isCurrent ? 'rgba(200,155,255,.08)' : 'rgba(255,255,255,.015)', border:'1px solid '+(isCurrent ? 'rgba(200,155,255,.35)' : 'rgba(140,165,195,.12)'), borderLeft:'2px solid '+accent },
+        isCurrent, locked, isOpen,
+        chevron: locked ? '' : (isOpen ? '▾' : '▸'),
+        body: b.body,
+        detail, hasDetail: detail.length > 0,
+        rowStyle: { display:'flex', alignItems:'center', gap:'1.6cqh', padding:'1.4cqh 1.8cqh', cursor: reached ? 'pointer' : 'default', background: isOpen ? 'rgba(200,155,255,.10)' : (isCurrent ? 'rgba(200,155,255,.08)' : 'rgba(255,255,255,.015)'), border:'1px solid '+(isOpen || isCurrent ? 'rgba(200,155,255,.35)' : 'rgba(140,165,195,.12)'), borderLeft:'2px solid '+accent },
         numStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.5cqh', color:accent, width:'3cqh', flex:'none' },
         titleStyle: { fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'2cqh', letterSpacing:'.03em', color: isCurrent ? '#f4f7fb' : (reached ? '#cdd8e4' : '#5f6f80') },
         metaStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.2cqh', letterSpacing:'.12em', color:'#7f93a8', marginTop:'.4cqh' },
-        onClick: reached ? (()=> this.goToEvent(i)) : (()=>{}),
+        chevronStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.6cqh', color: isOpen ? '#c89bff' : '#7f93a8', flex:'none' },
+        detailWrapStyle: { padding:'0 1.8cqh 1.8cqh 4.8cqh', borderLeft:'2px solid '+accent, background:'rgba(200,155,255,.04)', marginTop:'-.4cqh' },
+        bodyStyle: { fontFamily:"'Barlow',sans-serif", fontSize:'1.65cqh', color:'#cdd8e4', lineHeight:'1.6', paddingTop:'1.2cqh' },
+        noDetailStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.25cqh', letterSpacing:'.1em', color:'#5f6f80', marginTop:'1.2cqh' },
+        travelBtnStyle: { marginTop:'1.8cqh', fontFamily:"'Oxanium',sans-serif", fontWeight:700, fontSize:'1.4cqh', letterSpacing:'.16em', color:'#0a0e14', background:'linear-gradient(90deg,#d9c2ff,#c89bff)', border:'none', padding:'.9cqh 2.2cqh', cursor:'pointer' },
+        onClick: reached ? (()=> this.toggleExpand(i)) : (()=>{}),
+        onTravel: ()=> this.goToEvent(i),
       };
     });
 

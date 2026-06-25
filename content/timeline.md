@@ -13,6 +13,13 @@
       - <Category>: <Name> — <description>
     Valid categories: Quest, Gear, Faction, Triumph.  (Gear = loot/weapon.)
     The separator between Name and description is a spaced em dash:  " — ".
+  * "MORE INFO" (expanded view): add a "### " sub-heading at the END of an event block to begin
+    its detailed section. Everything after it (until the next "## " event) is shown ONLY when the
+    reader clicks the event open in the Timeline tab — not on the map or in the side panel. Inside it:
+      ### A heading           -> a small section heading
+      Plain lines             -> paragraphs
+      - lines starting "- "   -> bullet points
+    Add as many "### " sub-sections, paragraphs, and bullets as you like to expound on the event.
   * Lines starting with "<!--" are comments and ignored.
 -->
 
@@ -27,6 +34,14 @@ Centuries after the Collapse, a Ghost sparks life back into your bones amid the 
 - Faction: House of Devils — Four-armed Fallen scavengers who have picked the old Wall clean for centuries. Your very first enemy.
 - Triumph: First Light — Take your first breath as one of the Risen. The journey of a thousand worlds begins with a single resurrection.
 
+### Where it begins
+The Cosmodrome, in old Russia, was humanity's gateway to the stars during the Golden Age. Now its launch gantries are a rusted graveyard, picked over by the Fallen and haunted by the things that crawled in after the Collapse.
+
+### Why it matters
+- Your Ghost spent centuries searching the battlefield for the one corpse it could bring back — you.
+- The Khvostov you scavenge here is the very first weapon of the saga, and it returns, reforged, at its very end.
+- Everything that follows — every god you topple — starts with a single Guardian standing up in the dust.
+
 ## The Last City
 - Location: tower
 - Era: D1 · 2014
@@ -36,6 +51,14 @@ Your Ghost carries you to the Tower, humanity’s final bastion beneath the slum
 - Quest: A New Light — Report to the Vanguard and take your first assignment in defense of the Last City.
 - Gear: First Engram — Decrypt your first reward at the Cryptarch. Everything you carry, you earned.
 - Faction: The Vanguard — The three commanders who guide the Guardians: a Titan, a Hunter, and a Warlock. Your first real allies.
+
+### The Last Safe City
+Built beneath the Traveler after the Collapse, the Last City is the final refuge of humanity. Its walls have held against the Fallen, the Cabal, and worse — sometimes only because Guardians threw themselves into the gap.
+
+### Who you'll meet
+- Commander Zavala — the Titan who holds the line.
+- Ikora Rey — the Warlock who runs the Hidden.
+- Cayde-6 — the Hunter who makes the Tower laugh, while it still can.
 
 ## The Dark Below
 - Location: moon
