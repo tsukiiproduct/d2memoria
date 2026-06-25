@@ -352,6 +352,14 @@
     </div>
   </div>
 
+  <!-- ===================== TOP-CENTER VIEW TABS ===================== -->
+  <sc-if value="{{ started }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; left:50%; top:5cqh; transform:translateX(-50%); display:flex; gap:1cqh; z-index:65;">
+      <div onclick="{{ onToggleTimeline }}" style="{{ timelineTabStyle }}">TIMELINE</div>
+      <div onclick="{{ onToggleDossiers }}" style="{{ dossiersTabStyle }}">DOSSIERS</div>
+    </div>
+  </sc-if>
+
   <!-- ===================== WORLD NODES ===================== -->
   <sc-for list="{{ worlds }}" as="w" hint-placeholder-count="14">
     <div style="{{ w.wrapStyle }}">
@@ -507,19 +515,37 @@
     </div>
   </sc-if>
 
-  <!-- ===================== ARCHIVE / DOSSIERS BUTTON ===================== -->
-  <sc-if value="{{ hasDossiers }}" hint-placeholder-val="{{ true }}">
-    <div onclick="{{ onOpenDossiers }}" style="position:absolute; right:4.4cqh; top:4.4cqh; z-index:35; cursor:pointer; font-family:'Oxanium',sans-serif; font-weight:600; font-size:1.5cqh; letter-spacing:.18em; color:#cdd8e4; background:rgba(13,22,32,.72); border:1px solid rgba(200,155,255,.35); padding:1cqh 1.8cqh;">ARCHIVE › DOSSIERS</div>
+  <!-- ===================== TIMELINE PANEL ===================== -->
+  <sc-if value="{{ showTimeline }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute; inset:0; z-index:60; background:radial-gradient(circle at 50% 40%, rgba(8,12,18,.95), rgba(4,6,10,.98)); display:flex; flex-direction:column; align-items:center; padding:11cqh 0 3cqh;">
+      <div onclick="{{ onClosePanel }}" style="position:absolute; right:4cqh; top:5cqh; width:3.4cqh; height:3.4cqh; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#8a9bad; font-size:2.4cqh; border:1px solid rgba(140,165,195,.25); z-index:2;">✕</div>
+      <div style="font-family:'Barlow',sans-serif; font-size:1.5cqh; color:#7f93a8; margin-bottom:2cqh; text-align:center;">The full journey, in order. Click any reached chapter to travel there.</div>
+      <div style="width:74cqh; max-width:92%; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:1.2cqh; padding:0 1cqh;">
+        <sc-for list="{{ timeline }}" as="t" hint-placeholder-count="8">
+          <div onclick="{{ t.onClick }}" style="{{ t.rowStyle }}">
+            <div style="{{ t.numStyle }}">{{ t.num }}</div>
+            <div style="flex:1; min-width:0;">
+              <div style="{{ t.titleStyle }}">{{ t.title }}</div>
+              <div style="{{ t.metaStyle }}">{{ t.meta }}</div>
+            </div>
+            <sc-if value="{{ t.isCurrent }}" hint-placeholder-val="{{ false }}">
+              <div style="font-family:'Space Mono',monospace; font-size:1.05cqh; letter-spacing:.18em; color:#0a0e14; background:#c89bff; padding:.3cqh .8cqh; flex:none;">NOW</div>
+            </sc-if>
+            <sc-if value="{{ t.locked }}" hint-placeholder-val="{{ false }}">
+              <div style="font-family:'Space Mono',monospace; font-size:1.6cqh; color:#46525f; flex:none;">◇</div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
   </sc-if>
 
-  <!-- ===================== DOSSIERS ARCHIVE ===================== -->
+  <!-- ===================== DOSSIERS PANEL ===================== -->
   <sc-if value="{{ showDossiers }}" hint-placeholder-val="{{ false }}">
-    <div style="position:absolute; inset:0; z-index:60; background:radial-gradient(circle at 50% 40%, rgba(8,12,18,.94), rgba(4,6,10,.98)); display:flex; flex-direction:column; align-items:center; padding:5cqh 0 3cqh;">
-      <div onclick="{{ onCloseDossiers }}" style="position:absolute; right:4cqh; top:4cqh; width:3.4cqh; height:3.4cqh; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#8a9bad; font-size:2.4cqh; border:1px solid rgba(140,165,195,.25); z-index:2;">✕</div>
-      <div style="font-family:'Space Mono',monospace; font-size:1.5cqh; letter-spacing:.4em; color:#7f93a8;">THE ARCHIVE</div>
-      <div style="font-family:'Oxanium',sans-serif; font-weight:800; font-size:4cqh; letter-spacing:.05em; color:#f4f7fb; margin-top:1cqh;">DOSSIERS</div>
-      <div style="font-family:'Barlow',sans-serif; font-size:1.5cqh; color:#7f93a8; margin-top:.8cqh;">The biggest figures of the saga — and when they became important.</div>
-      <div style="width:76cqh; max-width:92%; margin-top:3cqh; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:2.2cqh; padding:0 1cqh;">
+    <div style="position:absolute; inset:0; z-index:60; background:radial-gradient(circle at 50% 40%, rgba(8,12,18,.95), rgba(4,6,10,.98)); display:flex; flex-direction:column; align-items:center; padding:11cqh 0 3cqh;">
+      <div onclick="{{ onClosePanel }}" style="position:absolute; right:4cqh; top:5cqh; width:3.4cqh; height:3.4cqh; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#8a9bad; font-size:2.4cqh; border:1px solid rgba(140,165,195,.25); z-index:2;">✕</div>
+      <div style="font-family:'Barlow',sans-serif; font-size:1.5cqh; color:#7f93a8; margin-bottom:2cqh; text-align:center;">The biggest figures of the saga — and when they became important.</div>
+      <div style="width:76cqh; max-width:92%; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:2.2cqh; padding:0 1cqh;">
         <sc-for list="{{ dossiers }}" as="d" hint-placeholder-count="6">
           <div style="{{ d.cardStyle }}">
             <div style="font-family:'Oxanium',sans-serif; font-weight:700; font-size:2.6cqh; color:#f4f7fb; letter-spacing:.03em;">{{ d.name }}</div>
@@ -786,7 +812,8 @@ class Component extends DCLogic {
   // People profiles, loaded from content/dossiers.md at runtime (empty until then).
   dossiers = [];
 
-  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, showDossiers: false, ship: { x:64, y:85 } };
+  // panel: null = star map, 'timeline' = timeline list, 'dossiers' = dossiers archive (mutually exclusive top-tab views)
+  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, panel: null, ship: { x:64, y:85 } };
 
   componentDidMount() { this.loadContent(); }
 
@@ -826,7 +853,19 @@ class Component extends DCLogic {
 
   begin(){ const w=this.beats[0].w; this.setState({ started:true, selWorld:w, shipVisible:true, ship:{x:this.meta[w].x,y:this.meta[w].y} }, this.persist); }
 
-  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false }); }
+  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false, panel:null }); }
+
+  // Travel to an already-reached event from the timeline list: fly the ship to that
+  // event's planet and open its side panel. Does NOT change progress (linear journey
+  // is preserved); locked (not-yet-reached) events are ignored.
+  goToEvent(i){
+    const { progress, traveling } = this.state;
+    if (traveling || i < 0 || i > progress) return;
+    const w = this.beats[i].w, to = this.meta[w];
+    this.setState({ panel:null, selWorld:w, selIcon:null, traveling:true, shipVisible:true });
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.setState({ ship:{ x:to.x, y:to.y } }); }));
+    setTimeout(()=>{ this.setState({ traveling:false }); }, 1050);
+  }
 
   openWorld(id){ if(this.firstIdx(id) <= this.state.progress){ this.setState({ selWorld:id, selIcon:null }); } }
 
@@ -1009,20 +1048,44 @@ class Component extends DCLogic {
       fields: (d.fields || []).map(f => ({ label: f.label, value: f.value })),
       cardStyle: { padding:'2.4cqh 2.8cqh', background:'rgba(255,255,255,.02)', border:'1px solid rgba(140,165,195,.16)', borderLeft:'2px solid #c89bff' },
     }));
+
+    // ordered timeline: every progressable event (from content/timeline.md), in order, with its location
+    const timeline = this.beats.map((b, i) => {
+      const reached = i <= progress, isCurrent = i === progress, locked = i > progress;
+      const m = this.meta[b.w] || {};
+      const accent = isCurrent ? '#c89bff' : (reached ? '#7f93a8' : '#46525f');
+      return {
+        num: String(i + 1).padStart(2, '0'),
+        title: reached ? b.title : '????????',
+        meta: b.era + ' · ' + (m.name || b.w),
+        isCurrent, locked,
+        rowStyle: { display:'flex', alignItems:'center', gap:'1.6cqh', padding:'1.4cqh 1.8cqh', cursor: reached ? 'pointer' : 'default', background: isCurrent ? 'rgba(200,155,255,.08)' : 'rgba(255,255,255,.015)', border:'1px solid '+(isCurrent ? 'rgba(200,155,255,.35)' : 'rgba(140,165,195,.12)'), borderLeft:'2px solid '+accent },
+        numStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.5cqh', color:accent, width:'3cqh', flex:'none' },
+        titleStyle: { fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'2cqh', letterSpacing:'.03em', color: isCurrent ? '#f4f7fb' : (reached ? '#cdd8e4' : '#5f6f80') },
+        metaStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.2cqh', letterSpacing:'.12em', color:'#7f93a8', marginTop:'.4cqh' },
+        onClick: reached ? (()=> this.goToEvent(i)) : (()=>{}),
+      };
+    });
+
+    // top-center view tabs (timeline / dossiers) — clicking the active tab toggles back to the map
+    const panel = this.state.panel;
     const hasDossiers = dossiers.length > 0;
-    const showDossiers = !!this.state.showDossiers;
+    const mkTab = (active) => ({ cursor:'pointer', fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'1.5cqh', letterSpacing:'.18em', padding:'1cqh 2.4cqh', border:'1px solid '+(active ? 'transparent' : 'rgba(200,155,255,.3)'), color: active ? '#0a0e14' : '#cdd8e4', background: active ? 'linear-gradient(90deg,#d9c2ff,#c89bff)' : 'rgba(13,22,32,.72)', boxShadow: active ? '0 0 1.6cqh rgba(200,155,255,.4)' : 'none' });
 
     return {
-      dossiers, hasDossiers, showDossiers,
-      onOpenDossiers: ()=> this.setState({ showDossiers:true, selWorld:null, selIcon:null }),
-      onCloseDossiers: ()=> this.setState({ showDossiers:false }),
+      dossiers, hasDossiers, timeline,
+      showTimeline: panel === 'timeline', showDossiers: panel === 'dossiers',
+      timelineTabStyle: mkTab(panel === 'timeline'), dossiersTabStyle: mkTab(panel === 'dossiers'),
+      onToggleTimeline: ()=> this.setState({ panel: this.state.panel === 'timeline' ? null : 'timeline', selIcon:null }),
+      onToggleDossiers: ()=> this.setState({ panel: this.state.panel === 'dossiers' ? null : 'dossiers', selIcon:null }),
+      onClosePanel: ()=> this.setState({ panel:null }),
       worlds, bodyLabels,
       eraTag: started ? cur.era : 'STANDBY',
       chapterNum: started ? (progress + 1) : 0,
       chapterTotal: total,
       progressPct: pct + '%',
       progressBarPct: pct + '%',
-      notStarted: !started,
+      notStarted: !started, started,
       shipVisible, shipStyle,
       hasSel, selName, selSub, selEra, selKind, selLocked, selBeats, dossierStyle,
       hasIcon, iconName, iconDesc, iconKind, iconColor, iconBigStyle,

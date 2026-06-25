@@ -234,7 +234,8 @@ class Component extends DCLogic {
   // People profiles, loaded from content/dossiers.md at runtime (empty until then).
   dossiers = [];
 
-  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, showDossiers: false, ship: { x:64, y:85 } };
+  // panel: null = star map, 'timeline' = timeline list, 'dossiers' = dossiers archive (mutually exclusive top-tab views)
+  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, panel: null, ship: { x:64, y:85 } };
 
   componentDidMount() { this.loadContent(); }
 
@@ -274,7 +275,19 @@ class Component extends DCLogic {
 
   begin(){ const w=this.beats[0].w; this.setState({ started:true, selWorld:w, shipVisible:true, ship:{x:this.meta[w].x,y:this.meta[w].y} }, this.persist); }
 
-  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false }); }
+  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false, panel:null }); }
+
+  // Travel to an already-reached event from the timeline list: fly the ship to that
+  // event's planet and open its side panel. Does NOT change progress (linear journey
+  // is preserved); locked (not-yet-reached) events are ignored.
+  goToEvent(i){
+    const { progress, traveling } = this.state;
+    if (traveling || i < 0 || i > progress) return;
+    const w = this.beats[i].w, to = this.meta[w];
+    this.setState({ panel:null, selWorld:w, selIcon:null, traveling:true, shipVisible:true });
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.setState({ ship:{ x:to.x, y:to.y } }); }));
+    setTimeout(()=>{ this.setState({ traveling:false }); }, 1050);
+  }
 
   openWorld(id){ if(this.firstIdx(id) <= this.state.progress){ this.setState({ selWorld:id, selIcon:null }); } }
 
@@ -457,20 +470,44 @@ class Component extends DCLogic {
       fields: (d.fields || []).map(f => ({ label: f.label, value: f.value })),
       cardStyle: { padding:'2.4cqh 2.8cqh', background:'rgba(255,255,255,.02)', border:'1px solid rgba(140,165,195,.16)', borderLeft:'2px solid #c89bff' },
     }));
+
+    // ordered timeline: every progressable event (from content/timeline.md), in order, with its location
+    const timeline = this.beats.map((b, i) => {
+      const reached = i <= progress, isCurrent = i === progress, locked = i > progress;
+      const m = this.meta[b.w] || {};
+      const accent = isCurrent ? '#c89bff' : (reached ? '#7f93a8' : '#46525f');
+      return {
+        num: String(i + 1).padStart(2, '0'),
+        title: reached ? b.title : '????????',
+        meta: b.era + ' · ' + (m.name || b.w),
+        isCurrent, locked,
+        rowStyle: { display:'flex', alignItems:'center', gap:'1.6cqh', padding:'1.4cqh 1.8cqh', cursor: reached ? 'pointer' : 'default', background: isCurrent ? 'rgba(200,155,255,.08)' : 'rgba(255,255,255,.015)', border:'1px solid '+(isCurrent ? 'rgba(200,155,255,.35)' : 'rgba(140,165,195,.12)'), borderLeft:'2px solid '+accent },
+        numStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.5cqh', color:accent, width:'3cqh', flex:'none' },
+        titleStyle: { fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'2cqh', letterSpacing:'.03em', color: isCurrent ? '#f4f7fb' : (reached ? '#cdd8e4' : '#5f6f80') },
+        metaStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.2cqh', letterSpacing:'.12em', color:'#7f93a8', marginTop:'.4cqh' },
+        onClick: reached ? (()=> this.goToEvent(i)) : (()=>{}),
+      };
+    });
+
+    // top-center view tabs (timeline / dossiers) — clicking the active tab toggles back to the map
+    const panel = this.state.panel;
     const hasDossiers = dossiers.length > 0;
-    const showDossiers = !!this.state.showDossiers;
+    const mkTab = (active) => ({ cursor:'pointer', fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'1.5cqh', letterSpacing:'.18em', padding:'1cqh 2.4cqh', border:'1px solid '+(active ? 'transparent' : 'rgba(200,155,255,.3)'), color: active ? '#0a0e14' : '#cdd8e4', background: active ? 'linear-gradient(90deg,#d9c2ff,#c89bff)' : 'rgba(13,22,32,.72)', boxShadow: active ? '0 0 1.6cqh rgba(200,155,255,.4)' : 'none' });
 
     return {
-      dossiers, hasDossiers, showDossiers,
-      onOpenDossiers: ()=> this.setState({ showDossiers:true, selWorld:null, selIcon:null }),
-      onCloseDossiers: ()=> this.setState({ showDossiers:false }),
+      dossiers, hasDossiers, timeline,
+      showTimeline: panel === 'timeline', showDossiers: panel === 'dossiers',
+      timelineTabStyle: mkTab(panel === 'timeline'), dossiersTabStyle: mkTab(panel === 'dossiers'),
+      onToggleTimeline: ()=> this.setState({ panel: this.state.panel === 'timeline' ? null : 'timeline', selIcon:null }),
+      onToggleDossiers: ()=> this.setState({ panel: this.state.panel === 'dossiers' ? null : 'dossiers', selIcon:null }),
+      onClosePanel: ()=> this.setState({ panel:null }),
       worlds, bodyLabels,
       eraTag: started ? cur.era : 'STANDBY',
       chapterNum: started ? (progress + 1) : 0,
       chapterTotal: total,
       progressPct: pct + '%',
       progressBarPct: pct + '%',
-      notStarted: !started,
+      notStarted: !started, started,
       shipVisible, shipStyle,
       hasSel, selName, selSub, selEra, selKind, selLocked, selBeats, dossierStyle,
       hasIcon, iconName, iconDesc, iconKind, iconColor, iconBigStyle,
