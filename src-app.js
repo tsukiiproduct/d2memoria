@@ -1,0 +1,485 @@
+
+// ===== Content parsers: turn the editable content/*.md files into app data =====
+// timeline.md -> beats[]  (the ordered sequence shown on the star map)
+// Build the HTML-comment delimiters by concatenation so the literal open/close
+// comment markers never appear as substrings in this script's source. This whole
+// script is embedded verbatim inside the page's bundler-template script tag, and a
+// literal comment-open marker there flips the HTML script-data tokenizer into
+// escaped mode, corrupting how the runtime parses the rest of the template.
+var CMT_OPEN = '<!' + '--', CMT_CLOSE = '--' + '>';
+function parseTimeline(md){
+  const tagMap = { quest:'quest', gear:'loot', faction:'faction', triumph:'triumph' };
+  const DASH = ' — '; // spaced em dash separating Name from description
+  const lines = md.split(/\r?\n/);
+  const beats = []; let cur = null, inComment = false;
+  for (const raw of lines){
+    const line = raw.trim();
+    if (inComment){ if (line.includes(CMT_CLOSE)) inComment = false; continue; }
+    if (line.startsWith(CMT_OPEN)){ if (!line.includes(CMT_CLOSE)) inComment = true; continue; }
+    if (line.startsWith('## ')){ cur = { w:'', era:'', title:line.slice(3).trim(), body:'', icons:[] }; beats.push(cur); continue; }
+    if (!cur) continue;
+    if (line.startsWith('- ')){
+      const rest = line.slice(2), ci = rest.indexOf(':');
+      if (ci < 0) continue;
+      const key = rest.slice(0, ci).trim().toLowerCase(), val = rest.slice(ci + 1).trim();
+      if (key === 'location'){ cur.w = val.toLowerCase(); continue; }
+      if (key === 'era'){ cur.era = val; continue; }
+      const t = tagMap[key];
+      if (t){ const sep = val.indexOf(DASH); cur.icons.push({ t, name: sep >= 0 ? val.slice(0, sep).trim() : val.trim(), desc: sep >= 0 ? val.slice(sep + DASH.length).trim() : '' }); }
+      continue;
+    }
+    if (line === '' || line.startsWith('#')) continue;
+    cur.body = cur.body ? cur.body + ' ' + line : line;
+  }
+  return beats.filter(b => b.w); // drop any block missing a Location
+}
+// dossiers.md -> dossiers[]  (people profiles shown in the ARCHIVE panel)
+function parseDossiers(md){
+  const lines = md.split(/\r?\n/);
+  const list = []; let cur = null, inComment = false;
+  for (const raw of lines){
+    const line = raw.trim();
+    if (inComment){ if (line.includes(CMT_CLOSE)) inComment = false; continue; }
+    if (line.startsWith(CMT_OPEN)){ if (!line.includes(CMT_CLOSE)) inComment = true; continue; }
+    if (line.startsWith('## ')){ cur = { name:line.slice(3).trim(), fields:[], body:'' }; list.push(cur); continue; }
+    if (!cur) continue;
+    if (line.startsWith('- ')){
+      const rest = line.slice(2), ci = rest.indexOf(':');
+      if (ci >= 0) cur.fields.push({ label: rest.slice(0, ci).trim(), value: rest.slice(ci + 1).trim() });
+      continue;
+    }
+    if (line === '' || line.startsWith('#')) continue;
+    cur.body = cur.body ? cur.body + ' ' + line : line;
+  }
+  return list;
+}
+
+class Component extends DCLogic {
+  // ---------- world layout (x%, y%, size in cqh) ----------
+  meta = {
+    // ===== LARGE BACKGROUND BODIES (bleed off edges) =====
+    earth:       { name:'EARTH', x:50, y:142, size:100, type:'planet', tint:'#7fa8d8', tier:'body', visual:true, luminous:true,
+                   grad:'radial-gradient(circle at 46% 22%, #c2dcf2, #5a8fc4 30%, #285e8c 56%, #103048 80%, #081826 96%)' },
+    saturn:      { name:'SATURN', x:31, y:24, size:15, type:'planet', tint:'#e2d2a8', tier:'body', visual:true, gas:true, ring:true, ringColor:'rgba(214,196,150,.55)', lx:31, ly:35,
+                   grad:'radial-gradient(circle at 40% 32%, #efe2c2, #c2a974 40%, #6f5c38 70%, #2a2214 92%)' },
+    jupiter:     { name:'JUPITER', x:71, y:24, size:16, type:'planet', tint:'#e6c79a', tier:'body', visual:true, gas:true, lx:71, ly:35,
+                   grad:'radial-gradient(circle at 40% 32%, #f0dcb8, #cf9e66 38%, #9a6238 64%, #4a2c18 88%)' },
+    mars:        { name:'MARS', sub:'MERIDIAN BAY · HELLAS BASIN', x:14, y:57, size:16, type:'planet', tint:'#f0a878', kind:'DESTINATION', tier:'body', rock:true, lx:14, ly:69,
+                   grad:'radial-gradient(circle at 38% 28%, #f6bd92, #c25f33 42%, #6a2914 72%, #1f0d08 92%)' },
+    neptune:     { name:'NEPTUNE', sub:'NEOMUNA', x:11, y:33, size:14, type:'planet', tint:'#8fb6f0', kind:'HIDDEN CITY', tier:'body', gas:true, ring:true, ringColor:'rgba(150,185,235,.5)', lx:11, ly:44,
+                   grad:'radial-gradient(circle at 38% 30%, #bcd6f6, #4f7ed0 44%, #243f7a 73%, #0a1430 92%)' },
+    moon:        { name:'THE MOON', sub:'HELLMOUTH', x:88, y:77, size:15, type:'planet', tint:'#cfd6df', kind:'DESTINATION', tier:'body', rock:true, lx:88, ly:87,
+                   grad:'radial-gradient(circle at 38% 28%, #e7ebf1, #9aa1ac 42%, #4c525c 70%, #181c22 92%)' },
+    venus:       { name:'VENUS', sub:'ISHTAR SINK', x:14, y:81, size:12, type:'planet', tint:'#f0d49a', kind:'DESTINATION', tier:'body', rock:true, lx:14, ly:90,
+                   grad:'radial-gradient(circle at 38% 28%, #f9e8ba, #c79a52 44%, #6f5226 72%, #221808 92%)' },
+    nessus:      { name:'NESSUS', sub:'VEX PLANETOID', x:69, y:61, size:14, type:'planet', tint:'#e7b0a0', kind:'DESTINATION', tier:'body', rock:true, lx:69, ly:71,
+                   grad:'radial-gradient(circle at 38% 28%, #ecbcaa, #b5614f 40%, #5f7a52 62%, #233320 86%)' },
+    mercury:     { name:'MERCURY', sub:'INFINITE FOREST', x:33, y:66, size:10, type:'planet', tint:'#ddc096', kind:'DESTINATION', tier:'body', rock:true, lx:33, ly:75,
+                   grad:'radial-gradient(circle at 38% 28%, #ecd3a6, #a3814f 46%, #5a4228 73%, #1c1408 92%)' },
+    reef:        { name:'THE REEF', sub:'AWOKEN', x:90, y:40, size:13, type:'planet', tint:'#c7b6e6', kind:'DESTINATION', tier:'body', rock:true, lx:90, ly:51,
+                   grad:'radial-gradient(circle at 38% 28%, #d4c6ef, #7a64ac 44%, #3a2c63 74%, #140e26 92%)' },
+    // The Traveler — central, always luminous; late-game it is the Pale Heart
+    traveler:    { name:'THE TRAVELER', sub:'THE PALE HEART', x:50, y:45, size:16, type:'planet', tint:'#e6eef7', kind:'WITHIN THE TRAVELER', tier:'body', always:true, luminous:true, glyphTri:true,
+                   grad:'radial-gradient(circle at 42% 34%, #ffffff, #e6eef7 30%, #b3c2d6 56%, #76869e 78%, #3a4659 94%)' },
+    // ===== SATELLITE SITE MARKERS (small, grouped on parents) =====
+    tower:       { name:'THE TOWER', sub:'LAST CITY', x:50, y:80, size:6, type:'hub', tint:'#cdd8e4', kind:'SANCTUARY', tier:'site', parent:'earth' },
+    cosmodrome:  { name:'COSMODROME', sub:'EARTH', x:62, y:84, size:5.4, type:'zone', tint:'#9ab0c4', kind:'EARTH ZONE', tier:'site', parent:'earth' },
+    edz:         { name:'EDZ', sub:'DEAD ZONE', x:38, y:84, size:5.4, type:'zone', tint:'#9ab0c4', kind:'EARTH ZONE', tier:'site', parent:'earth' },
+    titan:       { name:'TITAN', sub:'METHANE SEAS', x:42, y:28, size:6.5, type:'planet', tint:'#a6d8e0', kind:'SATURN MOON', tier:'site', parent:'saturn', rock:true,
+                   grad:'radial-gradient(circle at 36% 30%, #b9e2ea, #4593a8 46%, #1d4d5f 74%, #08202a 92%)' },
+    dreadnaught: { name:'DREADNAUGHT', sub:"ORYX'S WARSHIP", x:22, y:32, size:5, type:'planet', tint:'#b7c2d2', kind:"SATURN'S RINGS", tier:'site', parent:'saturn', ring:true, ringColor:'rgba(150,165,190,.45)',
+                   grad:'radial-gradient(circle at 38% 32%, #6b7686, #3a424f 46%, #1c2129 74%, #0a0d12 92%)' },
+    io:          { name:'IO', sub:'LOST OASIS', x:61, y:30, size:6, type:'planet', tint:'#e8e6a8', kind:'JOVIAN MOON', tier:'site', parent:'jupiter', rock:true,
+                   grad:'radial-gradient(circle at 36% 30%, #eeeab2, #b6ab5e 46%, #6d6830 73%, #20200c 92%)' },
+    europa:      { name:'EUROPA', sub:'JOVIAN MOON', x:82, y:31, size:6.5, type:'planet', tint:'#bfe0ec', kind:'JOVIAN MOON', tier:'site', parent:'jupiter', rock:true,
+                   grad:'radial-gradient(circle at 36% 28%, #eaf4fa, #9fc4d6 40%, #4f7488 70%, #16242e 92%)' },
+    throneworld: { name:"SAVATHÛN'S THRONE", sub:'WITCH QUEEN', x:17, y:50, size:6, type:'planet', tint:'#a8d8b0', kind:'THRONE WORLD', tier:'site', parent:'mars', rock:true,
+                   grad:'radial-gradient(circle at 36% 30%, #cfeecf, #6fae84 42%, #366048 70%, #122016 92%)' },
+    dreamingcity:{ name:'DREAMING CITY', sub:'THE REEF', x:80, y:48, size:5.5, type:'hub', tint:'#cdb6f0', kind:'AWOKEN CITY', tier:'site', parent:'reef' },
+    // ===== SPECIAL NODES =====
+    eternity:    { name:'ETERNITY', sub:'BEYOND THE END', x:25, y:43, size:6, type:'planet', tint:'#c89bff', kind:'THRESHOLD', tier:'special', ring:true, ringColor:'rgba(200,155,255,.7)',
+                   grad:'radial-gradient(circle at 42% 40%, #2a2440, #161228 50%, #0a0814 80%, #050309 96%)' },
+    frontier:    { name:'LAWLESS FRONTIER', sub:'THE EDGE', x:80, y:60, size:6, type:'planet', tint:'#e0b48a', kind:'UNCHARTED', tier:'special', rock:true,
+                   grad:'radial-gradient(circle at 36% 30%, #e8cba6, #b78a58 44%, #6a4c2e 72%, #221608 92%)' },
+    triumph:     { name:'MOMENT OF TRIUMPH', sub:"JOURNEY'S END", x:50, y:20, size:5.6, type:'seal', tint:'#ffcf8a', kind:'THE CULMINATION', tier:'special' },
+  };
+  order = ['earth','saturn','jupiter','mars','neptune','moon','venus','nessus','mercury','reef','traveler','titan','dreadnaught','io','europa','throneworld','dreamingcity','tower','cosmodrome','edz','eternity','frontier','triumph'];
+
+  // ---------- story beats (linear) ----------
+  beats = [
+    { w:'cosmodrome', era:'D1 · 2014', title:'A Guardian Rises', body:'Centuries after the Collapse, a Ghost sparks life back into your bones amid the rusted hulls of the Cosmodrome. You are Risen — a Guardian of the Last City, with no memory of who you were.', icons:[
+      { t:'quest', name:'Restoration', desc:'Recover a working jumpship from the Fallen-held Cosmodrome and break atmosphere before the House of Devils overruns you.' },
+      { t:'faction', name:'House of Devils', desc:'Four-armed Fallen scavengers who have picked the old Wall clean for centuries. Your very first enemy.' },
+      { t:'loot', name:'Khvostov 7G-02', desc:'A battered Golden Age auto rifle, scavenged off the Cosmodrome floor. Your first weapon — and, one day, the foundation of a legend.' },
+      { t:'triumph', name:'First Light', desc:'Take your first breath as one of the Risen. The journey of a thousand worlds begins with a single resurrection.' } ] },
+    { w:'tower', era:'D1 · 2014', title:'The Last City', body:'Your Ghost carries you to the Tower, humanity\u2019s final bastion beneath the slumbering Traveler. Here Guardians gather, rearm, and trade tales between impossible battles.', icons:[
+      { t:'faction', name:'The Vanguard', desc:'The three commanders who guide the Guardians: a Titan, a Hunter, and a Warlock. Your first real allies.' },
+      { t:'quest', name:'A New Light', desc:'Report to the Vanguard and take your first assignment in defense of the Last City.' },
+      { t:'loot', name:'First Engram', desc:'Decrypt your first reward at the Cryptarch. Everything you carry, you earned.' } ] },
+    { w:'moon', era:'D1 · 2014', title:'The Dark Below', body:'On the silent Moon you breach the Hellmouth, a wound that drops for miles into the dark. Below it the Hive nest in their millions, and a god-prince named Crota waits to wake.', icons:[
+      { t:'faction', name:'The Hive', desc:'Ancient death-worshippers who feed on the end of worlds. Their power grows with every life they take.' },
+      { t:'quest', name:'The Sword of Crota', desc:'Descend into the Hellmouth and shatter the Hive\u2019s blade before Crota stirs.' },
+      { t:'loot', name:'Gjallarhorn', desc:'A rocket launcher of legend whose wolfpack rounds have ended more nightmares than any Guardian can count.' },
+      { t:'triumph', name:'Eyes Up, Guardian', desc:'Survive the Hellmouth and come back into the light. Few do.' } ] },
+    { w:'venus', era:'D1 · 2014', title:'The Vault of Glass', body:'In the steaming jungles of Venus the Vex have folded time itself inside a mountain. You force open the Vault of Glass and unmake an enemy that was never quite real to begin with.', icons:[
+      { t:'faction', name:'The Vex', desc:'Time-bending machines that simulate the universe to predict and erase it. To them, you are a rounding error.' },
+      { t:'faction', name:'House of Winter', desc:'The Fallen who claim the Ishtar Sink, ever at war with the Vex over Venus\u2019s ruins.' },
+      { t:'quest', name:'Eye of a Gate Lord', desc:'Claim a Gate Lord\u2019s eye to pierce the Vault\u2019s defenses and step outside of time.' },
+      { t:'triumph', name:"Time's Vengeance", desc:'Conquer Atheon, Time\u2019s Conflux, and prove that even a machine that has already won can still lose.' } ] },
+    { w:'mars', era:'D1 · 2014', title:'Into the Black Garden', body:'The Cabal hold the red dunes of Mars, but deeper still lies the Black Garden — a place outside the system entirely. You strike down its Heart and return a fragment of the Traveler\u2019s Light.', icons:[
+      { t:'faction', name:'The Cabal', desc:'A militant interstellar empire of armoured rhinos who take worlds by sheer industrial force.' },
+      { t:'quest', name:'The Black Garden', desc:'Find the garden that does not appear on any map, and slay the Heart of Darkness at its center.' },
+      { t:'loot', name:'The Last Word', desc:'A hand cannon as fast as a guilty thought, carried by a gunslinger long dead. Yours, the moment you draw.' },
+      { t:'triumph', name:'A Light Returns', desc:'Restore the Traveler\u2019s Light and become the Guardian the City has been waiting for.' } ] },
+    { w:'reef', era:'D1 · 2015', title:'House of Wolves', body:'Summoned to the Reef, the Awoken queen Mara Sov turns you loose upon the House of Wolves — Fallen who swore her fealty, then broke it. Their leader Skolas would crown himself Kell of Kells.', icons:[
+      { t:'faction', name:'The Awoken', desc:'Children of the Reef, born of a catastrophe between Light and Dark, ruled by the enigmatic Mara Sov.' },
+      { t:'faction', name:'House of Wolves', desc:'Oathbreaker Fallen who once served the Queen. Now they hunt a crown that was never theirs to take.' },
+      { t:'quest', name:'The Wolf Hunt', desc:'Run Skolas to ground across Venus, the Reef, and the ruins of Earth.' },
+      { t:'loot', name:'Queenbreaker', desc:'An Awoken wire rifle that fires a lance of blinding void light.' } ] },
+    { w:'dreadnaught', era:'D1 · 2015', title:'The Taken King', body:'Oryx comes to avenge his son, dragging a continent-sized Dreadnaught into Saturn\u2019s rings. His grief twists your fallen foes into the Taken. You board the warship to end the King of the Hive himself.', icons:[
+      { t:'faction', name:'The Taken', desc:'Souls ripped from reality and remade as Oryx\u2019s puppets — blighted, blinking, wrong.' },
+      { t:'quest', name:'Regicide', desc:'Walk the length of the Dreadnaught and cut Oryx down inside his own throne world.' },
+      { t:'loot', name:'Touch of Malice', desc:'A scout rifle that feeds on the wielder\u2019s own life to fire a final, ruinous round.' },
+      { t:'triumph', name:"King's Fall", desc:'Topple the Taken King and carve your name into the deepest fear of the Hive.' } ] },
+    { w:'cosmodrome', era:'D1 · 2016', title:'Rise of Iron', body:'A long-buried plague called SIVA erupts in the Plaguelands beyond the Wall. Lord Saladin, the last of the Iron Lords, calls you back to old Earth to take up a mantle the world thought lost.', icons:[
+      { t:'faction', name:'The Splicers', desc:'Fallen of the House of Devils who have fused themselves with SIVA, the self-replicating nanotech that once doomed the Iron Lords.' },
+      { t:'quest', name:'The Iron Lords', desc:'Walk the path of the fallen heroes and earn the right to wear their mark.' },
+      { t:'loot', name:'Outbreak Prime', desc:'A pulse rifle that turns the SIVA plague back against itself in swarms of self-replicating nanites.' },
+      { t:'triumph', name:"Felwinter's Legacy", desc:'Become an Iron Lord, and carry the memory of those who fell so the City could stand.' } ] },
+    { w:'edz', era:'D2 · 2017', title:'The Red War', body:'Ghaul\u2019s Red Legion storms the Last City and cages the Traveler, tearing the Light from every Guardian at once. Powerless and nearly dead, you flee into the wilds of the European Dead Zone to begin again.', icons:[
+      { t:'faction', name:'The Red Legion', desc:'Ghaul\u2019s elite Cabal warhost — the army that did what no one else ever could: it took your Light.' },
+      { t:'quest', name:'Spark', desc:'Cross the EDZ to a shard of the Traveler and reclaim a sliver of the Light that was stolen.' },
+      { t:'loot', name:'Sweet Business', desc:'A roaring minigun of an auto rifle that rewards you for never letting go of the trigger.' },
+      { t:'triumph', name:'The Red War', desc:'Cast Ghaul down from the Traveler\u2019s cage and give the City back its dawn.' } ] },
+    { w:'titan', era:'D2 · 2017', title:'Savior of the Deep', body:'On Titan, Saturn\u2019s drowned moon, methane seas churn above and the Hive fester in the flooded arcologies below. Commander Sloane holds a line that everyone else has already abandoned.', icons:[
+      { t:'faction', name:'The Hive', desc:'Resurgent in the deep places of Titan, gnawing at the bones of a Golden Age that drowned long ago.' },
+      { t:'quest', name:'Enemy of My Enemy', desc:'Hold the rigs of Titan and keep the abyss from swallowing what little remains.' },
+      { t:'loot', name:'Tractor Cannon', desc:'A shotgun that throws enemies across the room like leaves in a storm.' } ] },
+    { w:'nessus', era:'D2 · 2017', title:'The Disgraced AI', body:'Nessus is a planetoid half-eaten and rebuilt by the Vex. The fractured AI Failsafe — equal parts chipper and despairing — guides you through the wreck of the Exodus ship she was born to fly.', icons:[
+      { t:'faction', name:'The Vex', desc:'Converting Nessus molecule by molecule into a machine that thinks like they do.' },
+      { t:'quest', name:'Looped', desc:'Descend the Inverted Spire and recover the Vex tech the Vanguard needs to fight back.' },
+      { t:'loot', name:'Sunshot', desc:'A hand cannon that marks the dead and detonates them in chains of solar fire.' },
+      { t:'triumph', name:'Cradle of the Vex', desc:'Best the Inverted Spire and prove the machines do not own the future yet.' } ] },
+    { w:'io', era:'D2 · 2017', title:'The Last Touch', body:'Io is the final world the Traveler blessed before the Collapse, and its soil still hums with that grace. Pilgrims, Vex, and Taken alike are all drawn to the last place a god showed mercy.', icons:[
+      { t:'faction', name:'The Taken', desc:'Drawn to Io\u2019s lingering Light like moths to the last candle in a dark house.' },
+      { t:'quest', name:'Ghost Stories', desc:'Walk Io\u2019s sacred sites and listen for what the Traveler left behind.' },
+      { t:'loot', name:'Polaris Lance', desc:'A scout rifle whose precise final round blooms into solar fire.' } ] },
+    { w:'mercury', era:'D2 · 2017', title:'Curse of Osiris', body:'Within Mercury\u2019s Infinite Forest, the Vex simulate a thousand thousand futures — and in every one, the Light is snuffed out. The exiled Warlock Osiris hunts the Mind Panoptes to break the cycle.', icons:[
+      { t:'faction', name:'The Vex of the Forest', desc:'Simulated legions endlessly rehearsing your defeat until they can make it real.' },
+      { t:'quest', name:'The Gateway', desc:'Enter the Infinite Forest with Osiris and walk through futures that should never be.' },
+      { t:'loot', name:'Prometheus Lens', desc:'A trace rifle that pours a continuous beam of focused solar flame.' },
+      { t:'triumph', name:'Tree of Probabilities', desc:'Defy the simulation and prove that even a future the Vex have already calculated can still be rewritten.' } ] },
+    { w:'mars', era:'D2 · 2018', title:'Warmind', body:'Mars\u2019s polar caps melt and wake Rasputin, humanity\u2019s ancient Warmind — and beneath the ice, the Hive worm-god Xol gnaws upward through the Hellas Basin toward the surface.', icons:[
+      { t:'faction', name:'Cult of Xol', desc:'Hive zealots who worship a worm-god of dread and dig to free it from the Martian ice.' },
+      { t:'quest', name:'Off-World', desc:'Reach Rasputin\u2019s bunker and decide whether humanity\u2019s oldest weapon is friend or threat.' },
+      { t:'loot', name:'Sleeper Simulant', desc:'A linear fusion rifle forged from Golden Age war-tech that punches clean through anything.' },
+      { t:'triumph', name:'Spire of Stars', desc:'Strike the shadow of the Almighty and stop the sun from being turned against the City.' } ] },
+    { w:'dreamingcity', era:'D2 · 2018', title:'Forsaken', body:'A prison break in the Reef ends with Cayde-6 dead at the hand of Prince Uldren Sov. Grief becomes a hunt — across the Tangled Shore, after the Barons, and into a cursed Awoken city that loops the same three weeks forever.', icons:[
+      { t:'faction', name:'The Scorn', desc:'Risen, rotted Fallen freed from the Prison of Elders — neither alive nor truly dead.' },
+      { t:'quest', name:'The Machinist', desc:'Hunt the Barons one by one across the Tangled Shore and take back what they stole.' },
+      { t:'loot', name:'Ace of Spades', desc:'Cayde-6\u2019s own hand cannon. You carry it now, and you carry him.' },
+      { t:'triumph', name:'Last Wish', desc:'Descend into the Dreaming City, outwit Riven — the last Ahamkara — and learn that some wishes can never be unmade.' } ] },
+    { w:'moon', era:'D2 · 2019', title:'Shadowkeep', body:'You return to the Moon to find it changed — a red Hive temple risen from the dust, and Nightmares of the dead you could not save stalking the craters. Beneath it all a Pyramid waits, silent and patient. The Darkness has finally come.', icons:[
+      { t:'faction', name:'Nightmares', desc:'Phantoms of your greatest losses and failures, given form and teeth by the Darkness beneath the Moon.' },
+      { t:'quest', name:'In Search of Answers', desc:'Breach the Scarlet Keep and confront the power stirring under the lunar surface.' },
+      { t:'loot', name:'Divinity', desc:'A trace rifle forged from Vex remains that cages an enemy in a field of pure Light.' },
+      { t:'triumph', name:'Shadowkeep', desc:'Stand before the first Pyramid and feel the Darkness, at long last, look back at you.' } ] },
+    { w:'europa', era:'D2 · 2020', title:'Beyond Light', body:'On the frozen Jovian moon of Europa, the Fallen warlord Eramis wields Stasis — a shard of the Darkness itself. To stop her, you must take up that same forbidden power, and learn to walk the razor\u2019s edge between Light and Dark.', icons:[
+      { t:'faction', name:'House of Salvation', desc:'Eramis\u2019s Fallen, who would rather kneel to the Darkness than die in the cold.' },
+      { t:'quest', name:'Born in Darkness', desc:'Master Stasis and claim a sliver of the Darkness\u2019s gift as your own.' },
+      { t:'loot', name:"Salvation's Grip", desc:'A Stasis grenade launcher of Clovis Bray design that freezes the battlefield solid.' },
+      { t:'triumph', name:'Beyond Light', desc:'Wield the Darkness without letting it wield you. Few powers are so easily turned against their bearer.' } ] },
+    { w:'throneworld', era:'D2 · 2022', title:'The Witch Queen', body:'Savathûn, the Witch Queen, has stolen the Light and built Ghosts of her own. In her swampy Throne World you face a Lucent Hive that resurrects exactly as you do — and a truth about the Light that no one ever wanted to learn.', icons:[
+      { t:'faction', name:'Lucent Hive', desc:'Hive Guardians who wield the Light and rise from death again and again, just as you always have.' },
+      { t:'quest', name:'The Investigation', desc:'Unravel how Savathûn stole the Light, and what it means that she could.' },
+      { t:'loot', name:'Osteo Striga', desc:'A poison SMG crafted at the Enclave — the first weapon you ever truly made with your own hands.' },
+      { t:'triumph', name:'The Witch Queen', desc:'Out-think the cleverest liar in the universe inside the maze of her own mind.' } ] },
+    { w:'neptune', era:'D2 · 2023', title:'Lightfall', body:'Calus, now a Disciple of the Witness, hunts the mysterious Veil in the hidden city of Neomuna on Neptune. Its Cloud Striders make a last stand while you grasp a new power — Strand — woven from the very fabric of reality.', icons:[
+      { t:'faction', name:'Shadow Legion', desc:'Calus\u2019s Darkness-touched Cabal, marching under a fallen emperor turned zealot.' },
+      { t:'quest', name:'Headlong', desc:'Defend Neomuna and race the Witness to the secret of the Veil.' },
+      { t:'loot', name:'Final Warning', desc:'A Strand sidearm that paints its targets and never misses what it has marked.' },
+      { t:'triumph', name:'Lightfall', desc:'Hold the line even as the Witness reaches the Traveler and the sky goes dark.' } ] },
+    { w:'traveler', era:'D2 · 2024', title:'The Final Shape', body:'The Witness tears open the Traveler, and you follow it inside — into the Pale Heart, a dreamworld stitched from memory and possibility. Here, at the end of the Light and Darkness Saga, the war that began with your resurrection meets its final shape.', icons:[
+      { t:'faction', name:'The Witness', desc:'The author of the Collapse and the architect of the Final Shape — the still, silent end of all things.' },
+      { t:'quest', name:'Into the Light', desc:'Walk the Pale Heart, rally the Guardians, and carry the City\u2019s hope into the Traveler itself.' },
+      { t:'loot', name:'Still Hunt', desc:'A solar sniper rifle that holds the echo of Cayde\u2019s Golden Gun in every shot.' },
+      { t:'triumph', name:'Salvation\u2019s Edge', desc:'Reach the threshold of the Witness\u2019s design and prepare to unmake it.' } ] },
+    { w:'traveler', era:'D2 · 2024', title:'Excision', body:'Light and Dark as one, every Guardian who ever lived charges the Witness together. The saga that began with a single Ghost and a single forgotten corpse ends with all of them — united, unbroken, and unafraid.', icons:[
+      { t:'faction', name:'The Witness, Unveiled', desc:'No longer hidden, no longer patient. The final enemy stands revealed, and the whole of the Light answers.' },
+      { t:'triumph', name:'The Final Shape', desc:'Stand shoulder to shoulder with every Guardian and unmake the Witness for good.' },
+      { t:'loot', name:'A Saga Ends', desc:'Ten years of war, ten years of worlds, ten years of resurrections — all of it, finished here.' } ] },
+    { w:'eternity', era:'D2 · 2025', title:'Eternity', body:'Beyond the saga\u2019s end lies Eternity — a threshold where time and fate fold in on themselves. The great war is won, but something older and stranger stirs at the very edge of what the Light can still reach.', icons:[
+      { t:'faction', name:'The Nine', desc:'Enigmatic beings born of the dark spaces between worlds, who deal in fate and probability.' },
+      { t:'quest', name:'Across the Threshold', desc:'Step beyond everything known and into Eternity, where the rules you trusted no longer hold.' },
+      { t:'loot', name:'Echo of the Nine', desc:'A relic drawn from beyond the veil of fate, humming with a future not yet written.' },
+      { t:'triumph', name:'Eternity', desc:'Cross into what comes after the end — and find that the story is not finished with you yet.' } ] },
+    { w:'frontier', era:'D2 · 2025', title:'The Lawless Frontier', body:'Out past the order of the City lies the Lawless Frontier — uncharted, ungoverned, and crowded with those who would carve a new legend from the wreckage of the old war. A fresh age of Guardians begins here, on the ragged edge of everything.', icons:[
+      { t:'faction', name:'Renegades', desc:'Free agents, outlaws, and rogues staking their claims where no law from the Last City reaches.' },
+      { t:'quest', name:'Stake Your Claim', desc:'Make your name in a place where the only authority is the one you build yourself.' },
+      { t:'loot', name:"Frontier's Edge", desc:'A weapon forged for a lawless age, by hands that answer to no Vanguard.' },
+      { t:'triumph', name:'The Lawless Frontier', desc:'Ride out into the next great unknown, and become a legend all over again.' } ] },
+    { w:'triumph', era:'A DECADE OF LEGEND', title:'A Moment of Triumph', body:'From a nameless corpse in the Cosmodrome to the one who unmade the Witness and rode out past the edge of the map, every deed you have done is gathered and sealed in Light. The Moment of Triumph enshrines not the worlds you crossed — but the Guardian you became.', icons:[
+      { t:'triumph', name:'Moments of Triumph', desc:'Every great deed, every world walked, every god unmade — recorded for as long as the City stands.' },
+      { t:'triumph', name:'A Legend Sealed', desc:'Wear the mark of the journey\u2019s end. You did not just survive the story. You finished it.' },
+      { t:'loot', name:'The Whole Saga', desc:'Resurrection to triumph, Cosmodrome to the Dreaming City. The road is yours now. Eyes up, Guardian.' } ] },
+  ];
+
+  iconMeta = {
+    quest:   { color:'#c89bff', kind:'QUEST',   shape:'diamond' },
+    loot:    { color:'#ffcf8a', kind:'GEAR',    shape:'square' },
+    faction: { color:'#e88a7a', kind:'FACTION', shape:'circle' },
+    triumph: { color:'#7fd4ff', kind:'TRIUMPH', shape:'hex' },
+  };
+
+  // People profiles, loaded from content/dossiers.md at runtime (empty until then).
+  dossiers = [];
+
+  state = { progress: 0, started: false, selWorld: null, selIcon: null, traveling: false, shipVisible: false, showDossiers: false, ship: { x:64, y:85 } };
+
+  componentDidMount() { this.loadContent(); }
+
+  // Fetch the editable content files and let them override the built-in fallback data.
+  // When opened over http(s) (GitHub Pages / a local server) edits to content/*.md show up live.
+  // When opened straight off disk (file://) fetch fails and the embedded fallback is used.
+  async loadContent() {
+    try {
+      const res = await fetch('content/timeline.md', { cache: 'no-cache' });
+      if (res.ok) { const beats = parseTimeline(await res.text()); if (beats.length) this.beats = beats; }
+    } catch (e) { /* keep built-in fallback */ }
+    try {
+      const res = await fetch('content/dossiers.md', { cache: 'no-cache' });
+      if (res.ok) this.dossiers = parseDossiers(await res.text());
+    } catch (e) {}
+    this.restoreProgress();
+    this.forceUpdate();
+  }
+
+  restoreProgress() {
+    try {
+      const raw = localStorage.getItem('guardian-journey-v1');
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (typeof s.progress === 'number') {
+          const p = Math.max(0, Math.min(s.progress, this.beats.length - 1));
+          const w = this.beats[p] ? this.beats[p].w : 'cosmodrome';
+          this.setState({ progress: p, started: !!s.started, selWorld: s.started ? w : null, shipVisible: !!s.started, ship: { x:this.meta[w].x, y:this.meta[w].y } });
+        }
+      }
+    } catch(e) {}
+  }
+  persist() { try { localStorage.setItem('guardian-journey-v1', JSON.stringify({ progress:this.state.progress, started:this.state.started })); } catch(e){} }
+
+  firstIdx(id){ return this.beats.findIndex(b => b.w === id); }
+  lastIdx(id){ let r=-1; this.beats.forEach((b,i)=>{ if(b.w===id) r=i; }); return r; }
+
+  begin(){ const w=this.beats[0].w; this.setState({ started:true, selWorld:w, shipVisible:true, ship:{x:this.meta[w].x,y:this.meta[w].y} }, this.persist); }
+
+  reset(){ try{ localStorage.removeItem('guardian-journey-v1'); }catch(e){} this.setState({ progress:0, started:false, selWorld:null, selIcon:null, shipVisible:false, traveling:false }); }
+
+  openWorld(id){ if(this.firstIdx(id) <= this.state.progress){ this.setState({ selWorld:id, selIcon:null }); } }
+
+  continue(){
+    const { progress, traveling } = this.state;
+    if (traveling) return;
+    if (progress >= this.beats.length - 1){ this.setState({ selWorld:this.beats[progress].w }); return; }
+    const next = progress + 1;
+    const fromW = this.beats[progress].w, toW = this.beats[next].w;
+    if (fromW === toW){ this.setState({ progress:next, selWorld:toW, selIcon:null }, this.persist); return; }
+    const to = this.meta[toW];
+    this.setState({ traveling:true, shipVisible:true, selIcon:null, ship:{ x:this.meta[fromW].x, y:this.meta[fromW].y } });
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{ this.setState({ ship:{ x:to.x, y:to.y } }); }));
+    setTimeout(()=>{ this.setState({ progress:next, selWorld:toW, traveling:false }, this.persist); }, 1050);
+  }
+
+  shapeStyleFor(type, size){
+    const m = this.iconMeta[type]; const c = m.color;
+    const base = { width:size, height:size, flex:'none', background:c+'33', border:'1px solid '+c };
+    if (m.shape === 'diamond') return { ...base, transform:'rotate(45deg)' };
+    if (m.shape === 'circle')  return { ...base, borderRadius:'50%' };
+    if (m.shape === 'hex')     return { ...base, clipPath:'polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)' };
+    return base;
+  }
+
+  renderVals(){
+    const { started, selWorld, selIcon, shipVisible, ship } = this.state;
+    const total = this.beats.length;
+    const progress = Math.max(0, Math.min(this.state.progress, total - 1));
+    const cur = this.beats[progress];
+
+    // worlds view-models
+    const worlds = this.order.map(id => {
+      const m = this.meta[id];
+      const inStory = this.firstIdx(id) >= 0;
+      const first = this.firstIdx(id), last = this.lastIdx(id);
+      const isLocked = !m.visual && !m.always && inStory && first > progress;
+      const isActive = started && inStory && cur.w === id;
+      const isVisited = started && inStory && !m.visual && last < progress;
+      const unlocked = !m.visual && inStory && first <= progress && started;
+      const baseZ = m.tier === 'body' ? 2 : 3;
+      const opacity = m.visual ? 0.92 : (m.always ? 1 : (isLocked ? 0.4 : 1));
+      const wrapStyle = { position:'absolute', left:m.x+'%', top:m.y+'%', transform:'translate(-50%,-50%)', width:m.size+'cqh', height:m.size+'cqh', cursor: unlocked ? 'pointer':'default', opacity, zIndex: (isActive || selWorld === id) ? 9 : baseZ, transition:'opacity .4s, transform .3s', fontSize:m.size+'cqh', pointerEvents:'none' };
+      // body — cinematic Director-style render: directional light, terminator, atmosphere
+      let bodyStyle, hasAtmo=false, atmoStyle={};
+      if (m.type === 'planet'){
+        const glow = isActive ? '0 0 1.25em 0.18em '+m.tint+'88, 0 0 2.7em 0.34em '+m.tint+'33'
+                              : '0 0 0.9em 0.06em '+m.tint+'2e, 0 0 2.1em 0.22em '+m.tint+'12';
+        const spec = 'radial-gradient(circle at 33% 27%, rgba(255,255,255,.34), rgba(255,255,255,0) 30%)';
+        let texture = '';
+        if (m.gas) texture = ', repeating-linear-gradient(2deg, rgba(0,0,0,.07) 0 5%, rgba(255,255,255,.05) 5% 11%)';
+        else if (m.rock) texture = ', radial-gradient(circle at 62% 66%, rgba(0,0,0,.26), transparent 22%), radial-gradient(circle at 34% 72%, rgba(0,0,0,.17), transparent 18%), radial-gradient(circle at 71% 41%, rgba(255,255,255,.07), transparent 15%)';
+        if (m.luminous){
+          bodyStyle = { position:'absolute', inset:0, borderRadius:'50%',
+            background: spec + ', ' + m.grad,
+            boxShadow:'inset 0.08em 0.06em 0.3em rgba(255,255,255,.5), inset -0.14em -0.12em 0.4em 0.02em rgba(0,0,0,.5), 0 0 1.6em 0.2em '+m.tint+'55, '+glow };
+        } else {
+          bodyStyle = { position:'absolute', inset:0, borderRadius:'50%',
+            background: spec + texture + ', ' + m.grad,
+            boxShadow:'inset 0.10em 0.08em 0.26em rgba(255,255,255,.16), inset -0.34em -0.28em 0.62em 0.04em rgba(0,0,0,.94), inset -0.04em -0.03em 0.12em rgba(0,0,0,.5), '+glow };
+        }
+        hasAtmo = true; // directional atmospheric crescent on the lit limb
+        atmoStyle = { position:'absolute', inset:'-7%', borderRadius:'50%', background:'radial-gradient(circle at 35% 29%, '+m.tint+'4d, '+m.tint+'12 44%, transparent 60%)', filter:'blur(1.5px)', mixBlendMode:'screen', pointerEvents:'none' };
+      } else if (m.type === 'zone'){
+        bodyStyle = { position:'absolute', inset:'12%', transform:'rotate(45deg)', border:'1px solid '+(isActive?'#c89bff':'rgba(180,205,230,.55)'), background:'rgba(20,30,42,.5)', boxShadow: isActive?'0 0 0.6em rgba(200,155,255,.5)':'none' };
+      } else if (m.type === 'hub'){
+        bodyStyle = { position:'absolute', inset:0, borderRadius:'50%', border:'1px solid '+(isActive?'#c89bff':'rgba(180,205,230,.5)'), background:'radial-gradient(circle, rgba(30,42,56,.7), rgba(12,18,26,.5))', boxShadow: isActive?'0 0 0.7em rgba(200,155,255,.5)':'none' };
+      } else { // seal
+        bodyStyle = { position:'absolute', inset:0, borderRadius:'50%', background:'radial-gradient(circle at 42% 38%, #fff1cf, #ffcf8a 38%, #b07e34 70%, #4a3414 92%)', boxShadow:'0 0 0.9em 0.12em '+m.tint+(isActive?'aa':'55'), border:'1px solid rgba(255,225,170,.6)' };
+      }
+      // make ONLY the visible disc clickable so a big planet's empty square corners don't steal a small neighbour's clicks
+      const clickable = !m.visual;
+      bodyStyle.pointerEvents = clickable ? 'auto' : 'none';
+      bodyStyle.cursor = (clickable && unlocked) ? 'pointer' : 'default';
+      if (m.type === 'planet' || m.type === 'hub' || m.type === 'seal') bodyStyle.clipPath = 'circle(50%)';
+      // glyph inside framed nodes
+      let hasGlyph=false, glyphStyle={};
+      if (m.type === 'zone'){ hasGlyph=true; glyphStyle={ position:'absolute', inset:'34%', transform:'rotate(45deg)', border:'1px solid '+m.tint+'aa' }; }
+      else if (m.type === 'hub' && id==='tower'){ hasGlyph=true; glyphStyle={ position:'absolute', inset:'30%', borderRadius:'2px', background:'linear-gradient(180deg,#aebccd,#5f6f80)', clipPath:'polygon(20% 100%,20% 40%,35% 40%,35% 20%,50% 8%,65% 20%,65% 40%,80% 40%,80% 100%)' }; }
+      else if (m.type === 'hub' && id==='dreamingcity'){ hasGlyph=true; glyphStyle={ position:'absolute', left:'46%', top:'22%', width:'8%', height:'56%', background:'linear-gradient(180deg,#e6d6ff,#7a64ac)', clipPath:'polygon(50% 0,100% 30%,70% 100%,30% 100%,0 30%)' }; }
+      else if (m.type === 'seal'){ hasGlyph=true; glyphStyle={ position:'absolute', inset:'30%', transform:'rotate(45deg)', border:'1.5px solid rgba(90,60,20,.7)' }; }
+      else if (m.glyphTri){ hasGlyph=true; glyphStyle={ position:'absolute', left:'50%', top:'56%', transform:'translate(-50%,-50%)', width:0, height:0, borderLeft:'0.26em solid transparent', borderRight:'0.26em solid transparent', borderBottom:'0.46em solid rgba(228,188,242,.72)', filter:'drop-shadow(0 0 0.12em rgba(238,208,255,.9))' }; }
+      // ring (saturn / neptune / eternity) — concentric banded ring
+      const rc = m.ringColor || 'rgba(190,205,225,.5)';
+      const ringStyle = { position:'absolute', left:'-42%', top:'29%', width:'184%', height:'46%', borderRadius:'50%', transform:'rotate(-17deg)', pointerEvents:'none', background:'radial-gradient(ellipse at 50% 50%, transparent 0 32%, '+rc+' 34%, transparent 40%, transparent 45%, '+rc+' 48%, transparent 56%, transparent 61%, '+rc+' 65%, transparent 73%)', filter:'drop-shadow(0 0 0.25em '+rc+')' };
+      // active ring
+      const activeRingStyle = { position:'absolute', inset:'-22%', borderRadius: m.type==='zone' ? '0' : '50%', border:'1.5px solid #c89bff', animation:'ringpulse 2.4s ease-in-out infinite', transform: m.type==='zone' ? 'rotate(45deg)':'none' };
+      const isSelected = selWorld === id;
+      const selectedRingStyle = { position:'absolute', inset:'-34%', borderRadius: m.type==='zone' ? '0' : '50%', border:'1.5px solid rgba(232,238,245,.85)', boxShadow:'0 0 1.2cqh rgba(200,155,255,.55)', transform: m.type==='zone' ? 'rotate(45deg)':'none' };
+      // lock badge
+      const lockStyle = { position:'absolute', right:'-6%', top:'-6%', width:'2.6cqh', height:'2.6cqh', fontSize:'1.5cqh', display:'flex', alignItems:'center', justifyContent:'center', color:'#8a9bad', background:'rgba(8,12,18,.85)', border:'1px solid rgba(140,165,195,.3)', borderRadius:'50%' };
+      // objective marker (active = NOW chevron, visited = check)
+      const showMarker = isActive || isVisited;
+      const markerGlyph = isActive ? '▾' : '✓';
+      const markerStyle = { position:'absolute', left:'50%', top:'104%', transform:'translateX(-50%)', width:'2.6cqh', height:'2.6cqh', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.5cqh', color: isActive ? '#0a0e14' : '#9fb0c4', background: isActive ? '#c89bff' : 'rgba(20,30,42,.7)', border: isActive ? 'none' : '1px solid rgba(140,165,195,.4)', borderRadius:'2px', boxShadow: isActive ? '0 0 0.6em rgba(200,155,255,.6)':'none' };
+      // label
+      const labelStyle = { position:'absolute', left:'50%', top:'118%', transform:'translateX(-50%)', textAlign:'center', whiteSpace:'nowrap', pointerEvents:'none' };
+      const nameStyle = { fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'1.9cqh', letterSpacing:'.12em', color: isActive ? '#f4f7fb' : (isLocked ? '#5f6f80' : '#d2dbe6'), textShadow:'0 1px 6px #000' };
+      const subStyle = { fontFamily:"'Space Mono',monospace", fontSize:'1.15cqh', letterSpacing:'.18em', color: isLocked ? '#46525f' : '#7f93a8', marginTop:'.3cqh' };
+      return { id, name:m.name, sub:m.sub, isLocked, isActive, isVisited, isSelected, hasRing:!!m.ring, hasGlyph, showMarker, markerGlyph,
+        hasInlineLabel: (m.lx == null), hasAtmo, atmoStyle,
+        wrapStyle, bodyStyle, glyphStyle, ringStyle, activeRingStyle, selectedRingStyle, lockStyle, markerStyle, labelStyle, nameStyle, subStyle,
+        onClick: ()=> this.openWorld(id) };
+    });
+
+    // floating labels for the large bleed-off bodies
+    const bodyLabels = this.order.filter(id => this.meta[id].lx != null).map(id => {
+      const m = this.meta[id];
+      const inStory = this.firstIdx(id) >= 0;
+      const isActive = started && inStory && cur.w === id;
+      const isLocked = !m.visual && inStory && this.firstIdx(id) > progress;
+      return {
+        name: m.name, sub: m.sub || '', hasSub: !!m.sub,
+        posStyle: (m.labelAlign === 'left')
+          ? { position:'absolute', left:m.lx+'%', top:m.ly+'%', transform:'translateY(-50%)', textAlign:'left', whiteSpace:'nowrap', pointerEvents:'none', zIndex:7 }
+          : { position:'absolute', left:m.lx+'%', top:m.ly+'%', transform:'translate(-50%,-50%)', textAlign:'center', whiteSpace:'nowrap', pointerEvents:'none', zIndex:7 },
+        nameStyle: { fontFamily:"'Oxanium',sans-serif", fontWeight:600, fontSize:'2.2cqh', letterSpacing:'.14em', color: isActive ? '#f4f7fb' : (isLocked ? '#566472' : '#dce4ef'), textShadow:'0 1px 9px #000, 0 0 2px #000' },
+        subStyle: { fontFamily:"'Space Mono',monospace", fontSize:'1.2cqh', letterSpacing:'.2em', color: isLocked ? '#46525f' : '#8093a6', marginTop:'.35cqh' },
+      };
+    });
+
+    // dossier
+    let hasSel=false, selName='', selSub='', selEra='', selKind='', selLocked=false, selBeats=[];
+    if (selWorld){
+      hasSel = true;
+      const m = this.meta[selWorld];
+      selName = m.name; selSub = m.sub; selKind = m.kind;
+      selLocked = this.firstIdx(selWorld) > progress;
+      const wb = this.beats.map((b,i)=>({ b, i })).filter(x => x.b.w === selWorld);
+      const activeOne = wb.find(x => x.i === progress) || wb.filter(x => x.i <= progress).pop() || wb[0];
+      selEra = activeOne.b.era;
+      selBeats = wb.map(({ b, i }) => {
+        const reached = i <= progress; const isCurrent = i === progress; const locked = i > progress;
+        const dotColor = isCurrent ? '#c89bff' : (reached ? '#7f93a8' : '#46525f');
+        return {
+          title: reached ? b.title : '????????',
+          body: b.body, era: b.era, reached, isCurrent, locked,
+          titleColor: isCurrent ? '#f4f7fb' : (reached ? '#cdd8e4' : '#5f6f80'),
+          cardStyle: { padding:'1.6cqh 1.8cqh', background: isCurrent ? 'rgba(200,155,255,.07)':'rgba(255,255,255,.015)', border:'1px solid '+(isCurrent?'rgba(200,155,255,.35)':'rgba(140,165,195,.12)'), borderLeft:'2px solid '+dotColor },
+          dotStyle: { width:'1.2cqh', height:'1.2cqh', borderRadius:'50%', flex:'none', background: reached ? dotColor : 'transparent', border: reached ? 'none':'1px solid #46525f', boxShadow: isCurrent ? '0 0 0.5em rgba(200,155,255,.8)':'none' },
+          icons: b.icons.map(ic => ({
+            name: ic.name,
+            chipStyle: { display:'flex', alignItems:'center', gap:'.7cqh', padding:'.6cqh .9cqh', background:'rgba(255,255,255,.025)', border:'1px solid rgba(140,165,195,.18)', cursor:'pointer' },
+            shapeStyle: this.shapeStyleFor(ic.t, '1.5cqh'),
+            onClick: ()=> this.setState({ selIcon: { ...ic } }),
+          })),
+        };
+      });
+    }
+
+    // dossier side: open on the OPPOSITE side of the selected world so it never hides it
+    let dossierStyle = {};
+    if (selWorld){
+      const onRight = this.meta[selWorld].x > 50;
+      dossierStyle = { position:'absolute', top:'12.5cqh', bottom:'9cqh', width:'40cqh', maxWidth:'44%', padding:'2.6cqh 3.4cqh 2.6cqh', display:'flex', flexDirection:'column', zIndex:25, borderTop:'1px solid rgba(200,155,255,.18)', borderBottom:'1px solid rgba(200,155,255,.18)',
+        ...(onRight ? { left:0, background:'linear-gradient(90deg, rgba(8,13,20,.98) 58%, rgba(8,13,20,0))', borderRight:'1px solid rgba(200,155,255,.14)' }
+                    : { right:0, background:'linear-gradient(270deg, rgba(8,13,20,.98) 58%, rgba(8,13,20,0))', borderLeft:'1px solid rgba(200,155,255,.14)' }) };
+    }
+
+    // icon popover
+    let hasIcon=false, iconName='', iconDesc='', iconKind='', iconColor='', iconBigStyle={};
+    if (selIcon){ hasIcon=true; const im=this.iconMeta[selIcon.t]; iconName=selIcon.name; iconDesc=selIcon.desc; iconKind=im.kind; iconColor=im.color; iconBigStyle=this.shapeStyleFor(selIcon.t,'4cqh'); }
+
+    // ship
+    const shipStyle = { position:'absolute', left:ship.x+'%', top:ship.y+'%', transform:'translate(-50%,-50%)', zIndex:12, transition:'left 1.0s cubic-bezier(.5,0,.3,1), top 1.0s cubic-bezier(.5,0,.3,1)', display:'flex', alignItems:'center', justifyContent:'center', pointerEvents:'none' };
+
+    // hud
+    const pct = Math.round(progress / (total - 1) * 100);
+    const atEnd = progress >= total - 1;
+    let continueLabel;
+    if (!started) continueLabel = 'BEGIN ▸';
+    else if (atEnd) continueLabel = '✓ JOURNEY COMPLETE';
+    else continueLabel = 'CONTINUE ▸  ' + this.beats[progress + 1].title.toUpperCase();
+    const continueBtnStyle = { fontFamily:"'Oxanium',sans-serif", fontWeight:700, fontSize:'1.75cqh', letterSpacing:'.14em', color: atEnd ? '#9fb0c4' : '#0a0e14', background: atEnd ? 'rgba(140,165,195,.12)' : 'linear-gradient(90deg,#d9c2ff,#c89bff)', border: atEnd ? '1px solid rgba(140,165,195,.3)':'none', padding:'1.3cqh 3.4cqh', cursor: atEnd ? 'default':'pointer', boxShadow: atEnd ? 'none':'0 0 2.4cqh rgba(200,155,255,.45)', whiteSpace:'nowrap' };
+
+    // people dossiers (expert-editable archive, from content/dossiers.md)
+    const dossiers = (this.dossiers || []).map(d => ({
+      name: d.name,
+      hasBody: !!d.body, body: d.body,
+      fields: (d.fields || []).map(f => ({ label: f.label, value: f.value })),
+      cardStyle: { padding:'2.4cqh 2.8cqh', background:'rgba(255,255,255,.02)', border:'1px solid rgba(140,165,195,.16)', borderLeft:'2px solid #c89bff' },
+    }));
+    const hasDossiers = dossiers.length > 0;
+    const showDossiers = !!this.state.showDossiers;
+
+    return {
+      dossiers, hasDossiers, showDossiers,
+      onOpenDossiers: ()=> this.setState({ showDossiers:true, selWorld:null, selIcon:null }),
+      onCloseDossiers: ()=> this.setState({ showDossiers:false }),
+      worlds, bodyLabels,
+      eraTag: started ? cur.era : 'STANDBY',
+      chapterNum: started ? (progress + 1) : 0,
+      chapterTotal: total,
+      progressPct: pct + '%',
+      progressBarPct: pct + '%',
+      notStarted: !started,
+      shipVisible, shipStyle,
+      hasSel, selName, selSub, selEra, selKind, selLocked, selBeats, dossierStyle,
+      hasIcon, iconName, iconDesc, iconKind, iconColor, iconBigStyle,
+      continueLabel, continueBtnStyle, canReset: started,
+      onBegin: ()=> this.begin(),
+      onContinue: ()=> this.continue(),
+      onReset: ()=> this.reset(),
+      onCloseSel: ()=> this.setState({ selWorld:null }),
+      onCloseIcon: ()=> this.setState({ selIcon:null }),
+    };
+  }
+}
